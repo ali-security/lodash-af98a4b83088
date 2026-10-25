@@ -2300,7 +2300,7 @@
      * @name has
      * @memberOf SetCache
      * @param {*} value The value to search for.
-     * @returns {boolean} Returns `true` if `value` is found, else `false`.
+     * @returns {number} Returns `true` if `value` is found, else `false`.
      */
     function setCacheHas(value) {
       return this.__data__.has(value);
@@ -3766,7 +3766,7 @@
           if (isArray(iteratee)) {
             return function(value) {
               return baseGet(value, iteratee.length === 1 ? iteratee[0] : iteratee);
-            };
+            }
           }
           return iteratee;
         });
@@ -6961,7 +6961,7 @@
 
     /**
      * Creates an array with all falsey values removed. The values `false`, `null`,
-     * `0`, `-0', '0n`, `""`, `undefined`, and `NaN` are falsy.
+     * `0`, `""`, `undefined`, and `NaN` are falsey.
      *
      * @static
      * @memberOf _

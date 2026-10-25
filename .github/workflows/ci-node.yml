@@ -1,14 +1,18 @@
 name: CI Node.js
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
+  workflow_dispatch:
+    inputs:
+      test-filter:
+        description: 'Test file to run instead of the full suite (e.g. test/test-fp.js)'
+        required: false
+        default: ''
 
 jobs:
   test:
     name: Node.js ${{ matrix.node-version }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     
     strategy:
       fail-fast: false
@@ -56,6 +60,62 @@ jobs:
 
     - name: Install dependencies
       run: npm install
-      
-    - name: Run Validate
-      run: npm run validate
+
+    # Seal: `npm run validate` = `npm run style` (jscs lint) && `npm test`; run the tests only.
+    - name: Run Tests
+      run: |
+        if [ -n "${{ inputs.test-filter }}" ]; then
+          npm run build && node ${{ inputs.test-filter }}
+        else
+          npm test
+        fi
+
+  # Seal: build the lodash-es tarball the way it is published — lodash-cli
+  # `modularize exports=es` of this repo's lodash.js, plus the publisher files.
+  pack:
+    name: Pack lodash-es
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js 24
+      uses: actions/setup-node@v4
+      with:
+        node-version: '24'
+
+    - name: Install lodash-cli (Bump to v4.17.21)
+      run: |
+        git clone https://github.com/lodash-archive/lodash-cli.git "$RUNNER_TEMP/lodash-cli"
+        cd "$RUNNER_TEMP/lodash-cli"
+        git checkout 51b58c4ecca7c9d7f8ae1d5ab50bb0787b5bc7d8
+        npm install --omit=dev --ignore-scripts --no-audit --no-fund
+        rm -rf node_modules/lodash
+        mkdir node_modules/lodash
+        cp "$GITHUB_WORKSPACE/lodash.js" node_modules/lodash/lodash.js
+        echo '{"name":"lodash","version":"4.17.23","main":"lodash.js"}' > node_modules/lodash/package.json
+
+    - name: Modularize
+      run: |
+        mkdir -p "$RUNNER_TEMP/lodash-es"
+        cd "$RUNNER_TEMP/lodash-es"
+        node "$RUNNER_TEMP/lodash-cli/bin/lodash" modularize exports=es -o ./
+        cp "$GITHUB_WORKSPACE/LICENSE" .
+        cp "$GITHUB_WORKSPACE"/npm-extras/lodash-es/* .
+        ls | wc -l
+
+    - name: Pack
+      run: |
+        mkdir -p "$GITHUB_WORKSPACE/seal-dist"
+        cd "$RUNNER_TEMP/lodash-es"
+        npm pack --pack-destination "$GITHUB_WORKSPACE/seal-dist"
+        ls -la "$GITHUB_WORKSPACE/seal-dist"
+
+    - name: Upload tarball
+      uses: actions/upload-artifact@v4
+      with:
+        name: lodash-es-tgz
+        path: seal-dist/lodash-es-*.tgz
+        if-no-files-found: error
